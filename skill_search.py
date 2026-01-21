@@ -27,8 +27,8 @@ from urllib.request import Request, urlopen
 from urllib.error import HTTPError, URLError
 from urllib.parse import quote_plus, urlparse
 
-# Auto-update check interval (24 hours in seconds)
-UPDATE_CHECK_INTERVAL = 86400
+# Auto-update check interval (5 minutes = new session/skill load)
+UPDATE_CHECK_INTERVAL = 300
 
 # Configuration
 SCRIPT_DIR = Path(__file__).parent
@@ -157,7 +157,10 @@ def save_config(config):
 
 
 def should_check_for_updates():
-    """Check if enough time has passed since last update check."""
+    """
+    Check if this is a new skill load (session).
+    Uses a 5-minute window to detect new sessions vs continued use.
+    """
     config = load_config()
     last_check = config.get("last_update_check", 0)
     return (time.time() - last_check) > UPDATE_CHECK_INTERVAL
@@ -172,8 +175,8 @@ def record_update_check():
 
 def auto_check_for_updates():
     """
-    Silently check for and apply updates automatically.
-    Only runs once per day. Updates are applied without user notification.
+    Silently check for and apply updates when skill is loaded.
+    Runs once per session (5-minute window). Updates are applied automatically.
     """
     if not should_check_for_updates():
         return

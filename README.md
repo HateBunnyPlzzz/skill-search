@@ -127,7 +127,7 @@ python3 ~/.claude/skills/skill-search/skill_search.py uninstall skill-name -y
 
 ### Auto-Update
 
-The skill **automatically updates itself** once per day when used. No action required - you're always on the latest version.
+The skill **automatically updates itself** when loaded. Each new session (5+ minutes since last use) triggers an update check. No action required - you're always on the latest version.
 
 For manual control:
 ```bash
