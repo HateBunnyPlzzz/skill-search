@@ -515,7 +515,7 @@ def format_results(response, is_ai_search=False, interactive=False, use_tui=Fals
                     "stars": s.get("stars", 0),
                     "description": s.get("description", "")[:200],
                     "url": s.get("skillUrl", ""),
-                    "github_url": skillsmp_url_to_github(s.get("skillUrl", ""))
+                    "github_url": s.get("githubUrl") or skillsmp_url_to_github(s.get("skillUrl", ""))
                 }
                 for s in skills
             ]
@@ -574,7 +574,7 @@ def format_results(response, is_ai_search=False, interactive=False, use_tui=Fals
                 if 0 <= idx < len(skills):
                     skill = skills[idx]
                     skillsmp_url = skill.get("skillUrl", "")
-                    github_url = skillsmp_url_to_github(skillsmp_url)
+                    github_url = skill.get("githubUrl") or skillsmp_url_to_github(skillsmp_url)
 
                     if github_url:
                         print(f"\nAttempting to install from: {github_url}")
@@ -640,7 +640,7 @@ def _run_tui_selection(skills):
     for skill in selected_skills:
         name = skill.get("name", "Unknown")
         skillsmp_url = skill.get("skillUrl", "")
-        github_url = skillsmp_url_to_github(skillsmp_url)
+        github_url = skill.get("githubUrl") or skillsmp_url_to_github(skillsmp_url)
 
         print(f"Installing: {name}...")
 
