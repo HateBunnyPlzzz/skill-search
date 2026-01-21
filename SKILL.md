@@ -75,12 +75,15 @@ Show the user:
 
 If the user wants to install a skill:
 ```bash
-# Install from GitHub URL
+# Install from GitHub URL (RECOMMENDED for Claude)
 python3 ~/.claude/skills/skill-search/skill_search.py install <github-url>
-
-# Or use interactive mode during search
-python3 ~/.claude/skills/skill-search/skill_search.py search "react" -i
 ```
+
+**IMPORTANT FOR CLAUDE**: Do NOT use `-i` or `--tui` flags. These require a terminal
+and will fail when run by Claude Code. Instead:
+1. Search without flags to get results
+2. Ask user which skill(s) they want
+3. Use the `install` command directly with the GitHub URL
 
 ## Commands
 

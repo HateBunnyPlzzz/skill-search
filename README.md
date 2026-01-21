@@ -55,11 +55,11 @@ python3 ~/.claude/skills/skill-search/skill_search.py search "docker" --sort sta
 # AI semantic search (natural language)
 python3 ~/.claude/skills/skill-search/skill_search.py ai "improve code quality"
 
-# Interactive mode - search and install in one step
+# Interactive mode - search and install in one step (terminal only)
 python3 ~/.claude/skills/skill-search/skill_search.py search "react" -i
 python3 ~/.claude/skills/skill-search/skill_search.py ai "testing" --interactive
 
-# TUI mode - multi-select skills with keyboard navigation
+# TUI mode - multi-select skills with keyboard navigation (terminal only)
 python3 ~/.claude/skills/skill-search/skill_search.py search "react" --tui
 python3 ~/.claude/skills/skill-search/skill_search.py ai "testing" --tui
 
@@ -86,8 +86,10 @@ python3 ~/.claude/skills/skill-search/skill_search.py analyze --deep  # scan sou
 - `-n, --limit N` - Results per page (default: 10, max: 100)
 - `-p, --page N` - Page number
 - `--sort stars|recent` - Sort order
-- `-i, --interactive` - Interactive mode: select and install skills from results
-- `--tui` - TUI mode: multi-select skills with keyboard navigation
+- `-i, --interactive` - Interactive mode: select and install skills *(terminal only)*
+- `--tui` - TUI mode: multi-select with keyboard navigation *(terminal only)*
+
+> **Note**: `-i` and `--tui` require a real terminal. When run by Claude Code, use the `install` command directly instead.
 
 ### Analyze Options
 

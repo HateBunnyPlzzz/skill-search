@@ -585,6 +585,15 @@ def format_results(response, is_ai_search=False, interactive=False, use_tui=Fals
 
 def _run_tui_selection(skills):
     """Run the TUI for skill selection and install selected skills."""
+    # TUI requires a real terminal
+    if not sys.stdin.isatty() or not sys.stdout.isatty():
+        print("-" * 70)
+        print("NOTE: TUI mode requires a terminal.")
+        print("To install skills, use the install command directly:")
+        print("  python3 skill_search.py install <github-url>")
+        print("-" * 70)
+        return skills
+
     try:
         from tui import run_skill_selector
     except ImportError:
