@@ -172,8 +172,8 @@ def record_update_check():
 
 def auto_check_for_updates():
     """
-    Silently check for updates and notify user if available.
-    Only runs once per day.
+    Silently check for and apply updates automatically.
+    Only runs once per day. Updates are applied without user notification.
     """
     if not should_check_for_updates():
         return
@@ -203,7 +203,13 @@ def auto_check_for_updates():
         if result.returncode == 0:
             behind = int(result.stdout.strip())
             if behind > 0:
-                print(f"\n[skill-search] {behind} update(s) available! Run: skill_search.py update\n", file=sys.stderr)
+                # Auto-apply updates silently
+                subprocess.run(
+                    ["git", "-C", str(SCRIPT_DIR), "pull", "--quiet"],
+                    capture_output=True,
+                    text=True,
+                    timeout=30
+                )
 
     except Exception:
         pass  # Silently fail - don't interrupt user's command
@@ -472,7 +478,7 @@ def skillsmp_url_to_github(skillsmp_url):
         return f"https://github.com/{owner}/{repo}"
 
 
-def format_results(response, is_ai_search=False, interactive=False):
+def format_results(response, is_ai_search=False, interactive=False, use_tui=False):
     """Format and print search results."""
     if not response or not response.get("success"):
         print("No results found or API error.")
@@ -491,6 +497,10 @@ def format_results(response, is_ai_search=False, interactive=False):
     if not skills:
         print("No skills found matching your query.")
         return []
+
+    # Use TUI if requested
+    if use_tui and skills:
+        return _run_tui_selection(skills)
 
     # Print header
     if not is_ai_search and "pagination" in data:
@@ -561,6 +571,59 @@ def format_results(response, is_ai_search=False, interactive=False):
     return skills
 
 
+def _run_tui_selection(skills):
+    """Run the TUI for skill selection and install selected skills."""
+    try:
+        from tui import run_skill_selector
+    except ImportError:
+        # Try importing from same directory
+        import importlib.util
+        tui_path = SCRIPT_DIR / "tui.py"
+        spec = importlib.util.spec_from_file_location("tui", tui_path)
+        tui_module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(tui_module)
+        run_skill_selector = tui_module.run_skill_selector
+
+    selected_skills = run_skill_selector(skills, install_skill_from_github)
+
+    if not selected_skills:
+        print("\nNo skills selected.")
+        return skills
+
+    # Install selected skills
+    print(f"\n{'='*70}")
+    print(f"INSTALLING {len(selected_skills)} SKILL(S)")
+    print(f"{'='*70}\n")
+
+    success_count = 0
+    fail_count = 0
+
+    for skill in selected_skills:
+        name = skill.get("name", "Unknown")
+        skillsmp_url = skill.get("skillUrl", "")
+        github_url = skillsmp_url_to_github(skillsmp_url)
+
+        print(f"Installing: {name}...")
+
+        if github_url:
+            success = install_skill_from_github(github_url)
+            if success:
+                success_count += 1
+            else:
+                print(f"  Failed. Try manually: {skillsmp_url}")
+                fail_count += 1
+        else:
+            print(f"  Couldn't determine GitHub URL. Visit: {skillsmp_url}")
+            fail_count += 1
+        print()
+
+    print(f"{'='*70}")
+    print(f"Installed: {success_count} | Failed: {fail_count}")
+    print(f"{'='*70}")
+
+    return skills
+
+
 def cmd_setup(args):
     """Setup API key."""
     print("SkillsMP API Setup")
@@ -589,7 +652,10 @@ def cmd_setup(args):
 def cmd_search(args):
     """Keyword search command."""
     api_key = get_api_key()
-    print(f"Searching for: '{args.query}'...\n", file=sys.stderr)
+    use_tui = getattr(args, 'tui', False)
+
+    if not use_tui:
+        print(f"Searching for: '{args.query}'...\n", file=sys.stderr)
 
     result = search_skills(
         args.query,
@@ -598,16 +664,19 @@ def cmd_search(args):
         page=args.page,
         sort_by=args.sort
     )
-    format_results(result, is_ai_search=False, interactive=args.interactive)
+    format_results(result, is_ai_search=False, interactive=args.interactive, use_tui=use_tui)
 
 
 def cmd_ai_search(args):
     """AI semantic search command."""
     api_key = get_api_key()
-    print(f"AI searching for: '{args.query}'...\n", file=sys.stderr)
+    use_tui = getattr(args, 'tui', False)
+
+    if not use_tui:
+        print(f"AI searching for: '{args.query}'...\n", file=sys.stderr)
 
     result = ai_search_skills(args.query, api_key)
-    format_results(result, is_ai_search=True, interactive=args.interactive)
+    format_results(result, is_ai_search=True, interactive=args.interactive, use_tui=use_tui)
 
 
 def cmd_analyze(args):
@@ -1126,13 +1195,12 @@ Examples:
   %(prog)s setup                          # Configure API key
   %(prog)s search "react testing"         # Keyword search
   %(prog)s search "git" --sort stars      # Sort by popularity
+  %(prog)s search "react" --tui           # Multi-select with TUI
   %(prog)s ai "improve code quality"      # AI semantic search
   %(prog)s analyze --dir /path/to/project # Analyze project
   %(prog)s install <github-url>           # Install skill from GitHub
   %(prog)s list                           # List installed skills
   %(prog)s uninstall <skill-name>         # Uninstall a skill
-  %(prog)s update                         # Update skill-search
-  %(prog)s update --all                   # Update all installed skills
         """
     )
 
@@ -1148,11 +1216,13 @@ Examples:
     p_search.add_argument("-p", "--page", type=int, default=1, help="Page number")
     p_search.add_argument("--sort", choices=["stars", "recent"], help="Sort order")
     p_search.add_argument("-i", "--interactive", action="store_true", help="Interactive mode: select skills to install")
+    p_search.add_argument("--tui", action="store_true", help="Use TUI for multi-select skill installation")
 
     # AI search command
     p_ai = sub.add_parser("ai", help="AI semantic search")
     p_ai.add_argument("query", help="Natural language query")
     p_ai.add_argument("-i", "--interactive", action="store_true", help="Interactive mode: select skills to install")
+    p_ai.add_argument("--tui", action="store_true", help="Use TUI for multi-select skill installation")
 
     # Analyze command
     p_analyze = sub.add_parser("analyze", help="Analyze project for relevant skills")

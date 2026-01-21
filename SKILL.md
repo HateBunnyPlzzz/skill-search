@@ -137,18 +137,28 @@ python3 ~/.claude/skills/skill-search/skill_search.py uninstall <skill-name> [-y
 
 ### Update Skills
 ```bash
-# Update skill-search itself (auto-checks daily)
+# Force update now
 python3 ~/.claude/skills/skill-search/skill_search.py update
-
-# Check for updates without applying
-python3 ~/.claude/skills/skill-search/skill_search.py update --check
 
 # Update all installed skills
 python3 ~/.claude/skills/skill-search/skill_search.py update --all
 ```
 
-**Auto-update notification**: The skill automatically checks for updates once per day
-and displays a notification if updates are available.
+**Auto-update**: The skill automatically updates itself once per day when used. No notification - you're always on the latest version.
+
+### TUI Mode (Multi-Select)
+```bash
+# Use TUI for multi-select installation
+python3 ~/.claude/skills/skill-search/skill_search.py search "react" --tui
+python3 ~/.claude/skills/skill-search/skill_search.py ai "testing" --tui
+```
+
+**TUI Controls:**
+- `↑/↓` or `j/k` - Navigate
+- `Space` - Toggle selection
+- `a` - Select all | `n` - Clear all
+- `Enter` - Install selected
+- `q/Esc` - Cancel
 
 ## Example Workflows
 

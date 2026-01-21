@@ -9,6 +9,8 @@ Search the [SkillsMP marketplace](https://skillsmp.com) for Claude Code skills r
 - **Project Analysis**: Automatically detect your tech stack and find relevant skills
 - **Install Skills**: Download and install skills directly from GitHub
 - **Manage Skills**: List and uninstall installed skills
+- **TUI Multi-Select**: Interactive terminal UI for selecting multiple skills to install
+- **Auto-Update**: Silently updates itself to the latest version
 
 ## Installation
 
@@ -57,6 +59,10 @@ python3 ~/.claude/skills/skill-search/skill_search.py ai "improve code quality"
 python3 ~/.claude/skills/skill-search/skill_search.py search "react" -i
 python3 ~/.claude/skills/skill-search/skill_search.py ai "testing" --interactive
 
+# TUI mode - multi-select skills with keyboard navigation
+python3 ~/.claude/skills/skill-search/skill_search.py search "react" --tui
+python3 ~/.claude/skills/skill-search/skill_search.py ai "testing" --tui
+
 # Analyze project and find skills
 python3 ~/.claude/skills/skill-search/skill_search.py analyze --dir /path/to/project
 python3 ~/.claude/skills/skill-search/skill_search.py analyze --deep  # scan source files
@@ -81,6 +87,7 @@ python3 ~/.claude/skills/skill-search/skill_search.py analyze --deep  # scan sou
 - `-p, --page N` - Page number
 - `--sort stars|recent` - Sort order
 - `-i, --interactive` - Interactive mode: select and install skills from results
+- `--tui` - TUI mode: multi-select skills with keyboard navigation
 
 ### Analyze Options
 
@@ -118,23 +125,28 @@ python3 ~/.claude/skills/skill-search/skill_search.py uninstall skill-name
 python3 ~/.claude/skills/skill-search/skill_search.py uninstall skill-name -y
 ```
 
-### Update
+### Auto-Update
 
-The skill automatically checks for updates once per day and notifies you if updates are available.
+The skill **automatically updates itself** once per day when used. No action required - you're always on the latest version.
 
+For manual control:
 ```bash
-# Update skill-search itself
+# Force update now
 python3 ~/.claude/skills/skill-search/skill_search.py update
 
-# Check for updates without applying
-python3 ~/.claude/skills/skill-search/skill_search.py update --check
-
-# Update a specific skill
-python3 ~/.claude/skills/skill-search/skill_search.py update skill-name
-
-# Update all installed skills (that have git repos)
+# Update all installed skills
 python3 ~/.claude/skills/skill-search/skill_search.py update --all
 ```
+
+### TUI Controls
+
+When using `--tui` mode:
+- `↑/↓` or `j/k` - Navigate up/down
+- `Space` - Toggle selection
+- `a` - Select all
+- `n` - Clear selection
+- `Enter` - Install selected skills
+- `q` or `Esc` - Cancel
 
 ## How It Works
 
