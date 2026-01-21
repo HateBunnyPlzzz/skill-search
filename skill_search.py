@@ -530,6 +530,15 @@ def format_results(response, is_ai_search=False, interactive=False, use_tui=Fals
 
     # Interactive installation prompt
     if interactive and skills:
+        # Check if stdin is available (TTY) - fails when run by Claude Code
+        if not sys.stdin.isatty():
+            print("-" * 70)
+            print("NOTE: Interactive mode requires a terminal.")
+            print("To install a skill, use:")
+            print("  python3 skill_search.py install <github-url>")
+            print("-" * 70)
+            return skills
+
         print("-" * 70)
         print("Enter skill number to install (or 'q' to quit):")
 
@@ -564,7 +573,7 @@ def format_results(response, is_ai_search=False, interactive=False, use_tui=Fals
                     print(f"Invalid choice. Enter 1-{len(skills)} or 'q'")
             except ValueError:
                 print(f"Invalid input. Enter a number 1-{len(skills)} or 'q'")
-            except KeyboardInterrupt:
+            except (KeyboardInterrupt, EOFError):
                 print("\nCancelled.")
                 break
 
