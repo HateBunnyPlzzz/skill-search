@@ -73,6 +73,7 @@ python3 ~/.claude/skills/skill-search/skill_search.py analyze --deep  # scan sou
 | `install <url>` | Install skill from GitHub URL |
 | `list` | List installed skills |
 | `uninstall <name>` | Uninstall a skill |
+| `update` | Check for and apply updates |
 
 ### Search Options
 
@@ -115,6 +116,24 @@ python3 ~/.claude/skills/skill-search/skill_search.py uninstall skill-name
 
 # Uninstall without confirmation
 python3 ~/.claude/skills/skill-search/skill_search.py uninstall skill-name -y
+```
+
+### Update
+
+The skill automatically checks for updates once per day and notifies you if updates are available.
+
+```bash
+# Update skill-search itself
+python3 ~/.claude/skills/skill-search/skill_search.py update
+
+# Check for updates without applying
+python3 ~/.claude/skills/skill-search/skill_search.py update --check
+
+# Update a specific skill
+python3 ~/.claude/skills/skill-search/skill_search.py update skill-name
+
+# Update all installed skills (that have git repos)
+python3 ~/.claude/skills/skill-search/skill_search.py update --all
 ```
 
 ## How It Works

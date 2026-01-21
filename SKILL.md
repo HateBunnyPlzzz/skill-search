@@ -135,6 +135,21 @@ python3 ~/.claude/skills/skill-search/skill_search.py list
 python3 ~/.claude/skills/skill-search/skill_search.py uninstall <skill-name> [-y]
 ```
 
+### Update Skills
+```bash
+# Update skill-search itself (auto-checks daily)
+python3 ~/.claude/skills/skill-search/skill_search.py update
+
+# Check for updates without applying
+python3 ~/.claude/skills/skill-search/skill_search.py update --check
+
+# Update all installed skills
+python3 ~/.claude/skills/skill-search/skill_search.py update --all
+```
+
+**Auto-update notification**: The skill automatically checks for updates once per day
+and displays a notification if updates are available.
+
 ## Example Workflows
 
 ### Example 1: "Find relevant skills for this project"

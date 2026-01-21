@@ -8,6 +8,7 @@ Usage:
     python3 skill_search.py ai "natural language"    # AI semantic search
     python3 skill_search.py analyze [--dir PATH]     # Analyze project
     python3 skill_search.py install <github-url>     # Install a skill
+    python3 skill_search.py update                   # Check for updates
 
 API: https://skillsmp.com/docs/api
 """
@@ -20,10 +21,14 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import time
 from pathlib import Path
 from urllib.request import Request, urlopen
 from urllib.error import HTTPError, URLError
 from urllib.parse import quote_plus, urlparse
+
+# Auto-update check interval (24 hours in seconds)
+UPDATE_CHECK_INTERVAL = 86400
 
 # Configuration
 SCRIPT_DIR = Path(__file__).parent
@@ -149,6 +154,62 @@ def save_config(config):
     """Save API configuration."""
     with open(CONFIG_FILE, "w") as f:
         json.dump(config, f, indent=2)
+
+
+def should_check_for_updates():
+    """Check if enough time has passed since last update check."""
+    config = load_config()
+    last_check = config.get("last_update_check", 0)
+    return (time.time() - last_check) > UPDATE_CHECK_INTERVAL
+
+
+def record_update_check():
+    """Record that we just checked for updates."""
+    config = load_config()
+    config["last_update_check"] = time.time()
+    save_config(config)
+
+
+def auto_check_for_updates():
+    """
+    Silently check for updates and notify user if available.
+    Only runs once per day.
+    """
+    if not should_check_for_updates():
+        return
+
+    # Check if this is a git repo
+    git_dir = SCRIPT_DIR / ".git"
+    if not git_dir.exists():
+        return
+
+    try:
+        # Fetch silently
+        subprocess.run(
+            ["git", "-C", str(SCRIPT_DIR), "fetch", "--quiet"],
+            capture_output=True,
+            text=True,
+            timeout=10
+        )
+
+        # Check if behind
+        result = subprocess.run(
+            ["git", "-C", str(SCRIPT_DIR), "rev-list", "--count", "HEAD..@{upstream}"],
+            capture_output=True,
+            text=True,
+            timeout=5
+        )
+
+        if result.returncode == 0:
+            behind = int(result.stdout.strip())
+            if behind > 0:
+                print(f"\n[skill-search] {behind} update(s) available! Run: skill_search.py update\n", file=sys.stderr)
+
+    except Exception:
+        pass  # Silently fail - don't interrupt user's command
+
+    # Record that we checked (even if it failed)
+    record_update_check()
 
 
 def get_api_key():
@@ -891,7 +952,172 @@ def cmd_uninstall(args):
     print(f"Uninstalled: {skill_name}")
 
 
+def check_for_updates(skill_dir):
+    """
+    Check if a skill has updates available.
+    Returns: (has_updates, behind_count, error_message)
+    """
+    git_dir = skill_dir / ".git"
+    if not git_dir.exists():
+        return False, 0, "Not a git repository"
+
+    try:
+        # Fetch latest from remote
+        subprocess.run(
+            ["git", "-C", str(skill_dir), "fetch", "--quiet"],
+            check=True,
+            capture_output=True,
+            text=True,
+            timeout=30
+        )
+
+        # Check how many commits behind
+        result = subprocess.run(
+            ["git", "-C", str(skill_dir), "rev-list", "--count", "HEAD..@{upstream}"],
+            capture_output=True,
+            text=True,
+            timeout=10
+        )
+
+        if result.returncode == 0:
+            behind = int(result.stdout.strip())
+            return behind > 0, behind, None
+        else:
+            return False, 0, "Could not check upstream"
+
+    except subprocess.TimeoutExpired:
+        return False, 0, "Timeout checking for updates"
+    except subprocess.CalledProcessError as e:
+        return False, 0, f"Git error: {e.stderr.strip()}"
+    except Exception as e:
+        return False, 0, str(e)
+
+
+def update_skill(skill_dir, skill_name):
+    """
+    Update a skill by pulling latest changes.
+    Returns: (success, message)
+    """
+    git_dir = skill_dir / ".git"
+    if not git_dir.exists():
+        return False, "Not a git repository (was not installed via git clone)"
+
+    try:
+        # Check for local changes
+        result = subprocess.run(
+            ["git", "-C", str(skill_dir), "status", "--porcelain"],
+            capture_output=True,
+            text=True,
+            timeout=10
+        )
+
+        if result.stdout.strip():
+            return False, "Has local changes. Commit or stash them first."
+
+        # Pull latest
+        result = subprocess.run(
+            ["git", "-C", str(skill_dir), "pull", "--ff-only"],
+            capture_output=True,
+            text=True,
+            timeout=60
+        )
+
+        if result.returncode == 0:
+            if "Already up to date" in result.stdout:
+                return True, "Already up to date"
+            else:
+                # Extract update info
+                return True, "Updated successfully"
+        else:
+            return False, f"Pull failed: {result.stderr.strip()}"
+
+    except subprocess.TimeoutExpired:
+        return False, "Timeout during update"
+    except subprocess.CalledProcessError as e:
+        return False, f"Git error: {e.stderr.strip()}"
+    except Exception as e:
+        return False, str(e)
+
+
+def cmd_update(args):
+    """Check for and apply updates to skills."""
+    skill_name = args.skill_name if hasattr(args, 'skill_name') and args.skill_name else None
+    check_only = args.check if hasattr(args, 'check') else False
+    update_all = args.all if hasattr(args, 'all') else False
+
+    if not SKILLS_DIR.exists():
+        print("No skills installed yet.")
+        return
+
+    # Determine which skills to update
+    if skill_name:
+        # Update specific skill
+        skill_dirs = [(SKILLS_DIR / skill_name, skill_name)]
+        if not skill_dirs[0][0].exists():
+            print(f"Error: Skill not found: {skill_name}", file=sys.stderr)
+            sys.exit(1)
+    elif update_all:
+        # Update all skills
+        skill_dirs = [(d, d.name) for d in SKILLS_DIR.iterdir() if d.is_dir() and (d / ".git").exists()]
+    else:
+        # Default: update skill-search itself
+        skill_dirs = [(SCRIPT_DIR, "skill-search")]
+
+    if not skill_dirs:
+        print("No updatable skills found (skills must be installed via git clone).")
+        return
+
+    print(f"\n{'='*70}")
+    print("CHECKING FOR UPDATES" if check_only else "UPDATING SKILLS")
+    print(f"{'='*70}\n")
+
+    updated_count = 0
+    error_count = 0
+
+    for skill_dir, name in skill_dirs:
+        print(f"  {name}... ", end="", flush=True)
+
+        has_updates, behind, error = check_for_updates(skill_dir)
+
+        if error:
+            print(f"[SKIP] {error}")
+            continue
+
+        if not has_updates:
+            print("[UP TO DATE]")
+            continue
+
+        if check_only:
+            print(f"[{behind} update(s) available]")
+            updated_count += 1
+        else:
+            # Apply update
+            success, message = update_skill(skill_dir, name)
+            if success:
+                print(f"[UPDATED] {message}")
+                updated_count += 1
+            else:
+                print(f"[ERROR] {message}")
+                error_count += 1
+
+    print()
+    if check_only:
+        if updated_count > 0:
+            print(f"{updated_count} skill(s) have updates available.")
+            print("Run without --check to apply updates.")
+        else:
+            print("All skills are up to date.")
+    else:
+        if updated_count > 0:
+            print(f"{updated_count} skill(s) updated.")
+        if error_count > 0:
+            print(f"{error_count} skill(s) had errors.")
+
+
 def main():
+    # Auto-check for updates (once per day, silent)
+    auto_check_for_updates()
+
     parser = argparse.ArgumentParser(
         description="Search SkillsMP for Claude Code skills",
         formatter_class=argparse.RawDescriptionHelpFormatter,
@@ -905,6 +1131,8 @@ Examples:
   %(prog)s install <github-url>           # Install skill from GitHub
   %(prog)s list                           # List installed skills
   %(prog)s uninstall <skill-name>         # Uninstall a skill
+  %(prog)s update                         # Update skill-search
+  %(prog)s update --all                   # Update all installed skills
         """
     )
 
@@ -945,6 +1173,12 @@ Examples:
     p_uninstall.add_argument("skill_name", help="Name of skill to uninstall")
     p_uninstall.add_argument("-y", "--yes", action="store_true", help="Skip confirmation")
 
+    # Update command
+    p_update = sub.add_parser("update", help="Check for and apply updates")
+    p_update.add_argument("skill_name", nargs="?", help="Specific skill to update (default: skill-search)")
+    p_update.add_argument("--all", action="store_true", help="Update all installed skills")
+    p_update.add_argument("--check", action="store_true", help="Only check for updates, don't apply")
+
     args = parser.parse_args()
 
     if not args.command:
@@ -965,6 +1199,8 @@ Examples:
         cmd_list(args)
     elif args.command == "uninstall":
         cmd_uninstall(args)
+    elif args.command == "update":
+        cmd_update(args)
 
 
 if __name__ == "__main__":
