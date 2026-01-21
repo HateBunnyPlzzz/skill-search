@@ -60,6 +60,26 @@ python3 ~/.claude/skills/skill-search/skill_search.py search "keywords here"
 
 # AI semantic search (natural language, better for goals)
 python3 ~/.claude/skills/skill-search/skill_search.py ai "describe what you need"
+
+# JSON output (RECOMMENDED for Claude - easier to parse)
+python3 ~/.claude/skills/skill-search/skill_search.py search "keywords" --json
+python3 ~/.claude/skills/skill-search/skill_search.py ai "query" --json
+```
+
+**JSON output format:**
+```json
+{
+  "skills": [
+    {
+      "name": "skill-name",
+      "author": "author-name",
+      "stars": 123,
+      "description": "What the skill does...",
+      "url": "https://skillsmp.com/skills/...",
+      "github_url": "https://github.com/owner/repo/tree/main/path"
+    }
+  ]
+}
 ```
 
 ### Step 4: Present Results
@@ -71,19 +91,40 @@ Show the user:
 - Description (what it does)
 - URL (to view full skill)
 
-### Step 5: Install (Optional)
+### Step 5: Install (Interactive Selection)
 
-If the user wants to install a skill:
+**IMPORTANT**: Use Claude Code's native `AskUserQuestion` tool for skill selection!
+
+**Workflow:**
+1. Run search command (no `-i` or `--tui` flags)
+2. Parse the JSON-like output or display results to user
+3. Use `AskUserQuestion` tool with multi-select to let user choose skills
+4. Run `install` command for each selected skill
+
+**Example AskUserQuestion usage:**
+```
+After getting search results, use AskUserQuestion with:
+- header: "Skills"
+- question: "Which skills would you like to install?"
+- multiSelect: true
+- options: [
+    { label: "skill-name-1 (123 stars)", description: "Brief description of what it does" },
+    { label: "skill-name-2 (45 stars)", description: "Brief description of what it does" },
+    { label: "skill-name-3 (12 stars)", description: "Brief description of what it does" },
+    { label: "None - just browsing", description: "Don't install any skills" }
+  ]
+```
+
+**Then install selected skills:**
 ```bash
-# Install from GitHub URL (RECOMMENDED for Claude)
+# For each selected skill, run:
 python3 ~/.claude/skills/skill-search/skill_search.py install <github-url>
 ```
 
-**IMPORTANT FOR CLAUDE**: Do NOT use `-i` or `--tui` flags. These require a terminal
-and will fail when run by Claude Code. Instead:
-1. Search without flags to get results
-2. Ask user which skill(s) they want
-3. Use the `install` command directly with the GitHub URL
+**WHY NOT use `-i` or `--tui` flags?**
+These require a real terminal (TTY) and will fail when run by Claude Code.
+The `AskUserQuestion` tool provides the same interactive experience using
+Claude Code's native UI (arrow keys, multi-select, etc.).
 
 ## Commands
 
@@ -311,42 +352,52 @@ AI searching by context: 'improve performance of the dashboard page...'
 
 ### Example 4: "Find and install a code review skill"
 
-**Interactive workflow:**
+**Claude's workflow using AskUserQuestion:**
+
+**Step 1: Search (no -i flag)**
 ```bash
-python3 ~/.claude/skills/skill-search/skill_search.py search "code review" --sort stars -i
+python3 ~/.claude/skills/skill-search/skill_search.py search "code review" --sort stars -n 4
 ```
 
-**Output:**
+**Step 2: Parse results and show to user**
 ```
-======================================================================
-Found 245 skills (Page 1/25)
-======================================================================
+I found these code review skills:
 
-1. code-review
-   Author: aiskillstore | Stars: 96
-   Automated PR code review with multi-agent analysis
-   URL: https://skillsmp.com/skills/...
+1. code-review (96 stars) - Automated PR code review with multi-agent analysis
+2. ai-code-reviewer (12 stars) - AI-powered code review on git hooks
+3. pr-reviewer (8 stars) - GitHub PR review automation
+4. review-assistant (5 stars) - Code review checklist generator
+```
 
-2. ai-code-reviewer
-   Author: yulong-me | Stars: 0
-   Automated AI-powered code review that runs on git hooks...
-   URL: https://skillsmp.com/skills/...
+**Step 3: Use AskUserQuestion for selection**
+```
+Claude uses AskUserQuestion tool:
+{
+  "questions": [{
+    "header": "Install",
+    "question": "Which code review skill(s) would you like to install?",
+    "multiSelect": true,
+    "options": [
+      { "label": "code-review (96 stars)", "description": "Automated PR code review with multi-agent analysis" },
+      { "label": "ai-code-reviewer (12 stars)", "description": "AI-powered code review on git hooks" },
+      { "label": "pr-reviewer (8 stars)", "description": "GitHub PR review automation" },
+      { "label": "None", "description": "Don't install any skills right now" }
+    ]
+  }]
+}
+```
 
-----------------------------------------------------------------------
-Enter skill number to install (or 'q' to quit):
-> 1
+**User sees Claude Code's native multi-select UI with arrow keys!**
 
-Attempting to install from: https://github.com/aiskillstore/...
-Installing skill 'code-review' from aiskillstore/marketplace-skills...
-  Branch: main
-  Path: bind/code-review
+**Step 4: Install selected skills**
+```bash
+# User selected "code-review", so Claude runs:
+python3 ~/.claude/skills/skill-search/skill_search.py install https://github.com/aiskillstore/marketplace-skills/tree/main/bind/code-review
+```
 
+**Result:**
+```
 Success! Skill installed to: /Users/you/.claude/skills/code-review
-  Name: code-review
-  Description: Automated PR code review with multi-agent analysis...
-
-Enter another number or 'q' to quit:
-> q
 ```
 
 ---

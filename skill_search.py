@@ -481,7 +481,7 @@ def skillsmp_url_to_github(skillsmp_url):
         return f"https://github.com/{owner}/{repo}"
 
 
-def format_results(response, is_ai_search=False, interactive=False, use_tui=False):
+def format_results(response, is_ai_search=False, interactive=False, use_tui=False, json_output=False):
     """Format and print search results."""
     if not response or not response.get("success"):
         print("No results found or API error.")
@@ -504,6 +504,24 @@ def format_results(response, is_ai_search=False, interactive=False, use_tui=Fals
     # Use TUI if requested
     if use_tui and skills:
         return _run_tui_selection(skills)
+
+    # JSON output mode (for Claude to parse easily)
+    if json_output and skills:
+        output = {
+            "skills": [
+                {
+                    "name": s.get("name", "Unknown"),
+                    "author": s.get("author", "Unknown"),
+                    "stars": s.get("stars", 0),
+                    "description": s.get("description", "")[:200],
+                    "url": s.get("skillUrl", ""),
+                    "github_url": skillsmp_url_to_github(s.get("skillUrl", ""))
+                }
+                for s in skills
+            ]
+        }
+        print(json.dumps(output, indent=2))
+        return skills
 
     # Print header
     if not is_ai_search and "pagination" in data:
@@ -674,8 +692,9 @@ def cmd_search(args):
     """Keyword search command."""
     api_key = get_api_key()
     use_tui = getattr(args, 'tui', False)
+    json_output = getattr(args, 'json', False)
 
-    if not use_tui:
+    if not use_tui and not json_output:
         print(f"Searching for: '{args.query}'...\n", file=sys.stderr)
 
     result = search_skills(
@@ -685,19 +704,20 @@ def cmd_search(args):
         page=args.page,
         sort_by=args.sort
     )
-    format_results(result, is_ai_search=False, interactive=args.interactive, use_tui=use_tui)
+    format_results(result, is_ai_search=False, interactive=args.interactive, use_tui=use_tui, json_output=json_output)
 
 
 def cmd_ai_search(args):
     """AI semantic search command."""
     api_key = get_api_key()
     use_tui = getattr(args, 'tui', False)
+    json_output = getattr(args, 'json', False)
 
-    if not use_tui:
+    if not use_tui and not json_output:
         print(f"AI searching for: '{args.query}'...\n", file=sys.stderr)
 
     result = ai_search_skills(args.query, api_key)
-    format_results(result, is_ai_search=True, interactive=args.interactive, use_tui=use_tui)
+    format_results(result, is_ai_search=True, interactive=args.interactive, use_tui=use_tui, json_output=json_output)
 
 
 def cmd_analyze(args):
@@ -1216,7 +1236,7 @@ Examples:
   %(prog)s setup                          # Configure API key
   %(prog)s search "react testing"         # Keyword search
   %(prog)s search "git" --sort stars      # Sort by popularity
-  %(prog)s search "react" --tui           # Multi-select with TUI
+  %(prog)s search "react" --json          # JSON output (for Claude)
   %(prog)s ai "improve code quality"      # AI semantic search
   %(prog)s analyze --dir /path/to/project # Analyze project
   %(prog)s install <github-url>           # Install skill from GitHub
@@ -1238,12 +1258,14 @@ Examples:
     p_search.add_argument("--sort", choices=["stars", "recent"], help="Sort order")
     p_search.add_argument("-i", "--interactive", action="store_true", help="Interactive mode: select skills to install")
     p_search.add_argument("--tui", action="store_true", help="Use TUI for multi-select skill installation")
+    p_search.add_argument("--json", action="store_true", help="Output results as JSON (for Claude to parse)")
 
     # AI search command
     p_ai = sub.add_parser("ai", help="AI semantic search")
     p_ai.add_argument("query", help="Natural language query")
     p_ai.add_argument("-i", "--interactive", action="store_true", help="Interactive mode: select skills to install")
     p_ai.add_argument("--tui", action="store_true", help="Use TUI for multi-select skill installation")
+    p_ai.add_argument("--json", action="store_true", help="Output results as JSON (for Claude to parse)")
 
     # Analyze command
     p_analyze = sub.add_parser("analyze", help="Analyze project for relevant skills")
