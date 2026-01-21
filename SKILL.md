@@ -26,6 +26,67 @@ First-time setup:
 python3 ~/.claude/skills/skill-search/skill_search.py setup
 ```
 
+## On Skill Load (/skill-search)
+
+When user invokes `/skill-search`, Claude should present options using `AskUserQuestion`:
+
+```
+{
+  "questions": [{
+    "header": "Action",
+    "question": "What would you like to do?",
+    "multiSelect": false,
+    "options": [
+      { "label": "Search for skills", "description": "Find new skills from SkillsMP marketplace" },
+      { "label": "View installed skills", "description": "See all skills currently installed" },
+      { "label": "Uninstall a skill", "description": "Remove an installed skill" },
+      { "label": "Analyze project", "description": "Find skills relevant to this project" }
+    ]
+  }]
+}
+```
+
+### If "View installed skills" selected:
+```bash
+python3 ~/.claude/skills/skill-search/skill_search.py list --json
+```
+
+**JSON output:**
+```json
+{
+  "skills": [
+    {"folder": "skill-name", "name": "Skill Name", "description": "What it does..."}
+  ],
+  "count": 5
+}
+```
+
+Then display results as a table to user:
+| # | Skill Name | Description |
+|---|------------|-------------|
+| 1 | skill-name | Brief description... |
+
+### If "Uninstall a skill" selected:
+1. First run `list --json` to get installed skills
+2. Use `AskUserQuestion` to let user select which skill to uninstall:
+```
+{
+  "questions": [{
+    "header": "Uninstall",
+    "question": "Which skill would you like to uninstall?",
+    "multiSelect": false,
+    "options": [
+      { "label": "skill-name-1", "description": "Description of skill 1" },
+      { "label": "skill-name-2", "description": "Description of skill 2" },
+      { "label": "Cancel", "description": "Don't uninstall anything" }
+    ]
+  }]
+}
+```
+3. Run: `python3 ~/.claude/skills/skill-search/skill_search.py uninstall <folder-name> -y`
+
+---
+
 ## How This Skill Works
 
 ### Step 1: Understand Context

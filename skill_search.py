@@ -994,9 +994,14 @@ def cmd_install(args):
 
 def cmd_list(args):
     """List installed skills."""
+    json_output = getattr(args, 'json', False)
+
     if not SKILLS_DIR.exists():
-        print("No skills installed yet.")
-        print(f"Skills directory: {SKILLS_DIR}")
+        if json_output:
+            print(json.dumps({"skills": [], "count": 0}))
+        else:
+            print("No skills installed yet.")
+            print(f"Skills directory: {SKILLS_DIR}")
         return
 
     skills = []
@@ -1024,7 +1029,22 @@ def cmd_list(args):
                 skills.append((item.name, item.name, "(no SKILL.md)"))
 
     if not skills:
-        print("No skills installed yet.")
+        if json_output:
+            print(json.dumps({"skills": [], "count": 0}))
+        else:
+            print("No skills installed yet.")
+        return
+
+    # JSON output for Claude
+    if json_output:
+        output = {
+            "skills": [
+                {"folder": folder, "name": name, "description": desc}
+                for folder, name, desc in sorted(skills)
+            ],
+            "count": len(skills)
+        }
+        print(json.dumps(output, indent=2))
         return
 
     print(f"\n{'='*70}")
@@ -1279,7 +1299,8 @@ Examples:
     p_install.add_argument("--force", action="store_true", help="Overwrite existing skill")
 
     # List command
-    sub.add_parser("list", help="List installed skills")
+    p_list = sub.add_parser("list", help="List installed skills")
+    p_list.add_argument("--json", action="store_true", help="Output as JSON (for Claude to parse)")
 
     # Uninstall command
     p_uninstall = sub.add_parser("uninstall", help="Uninstall a skill")
