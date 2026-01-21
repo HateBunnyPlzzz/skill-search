@@ -7,6 +7,8 @@ Search the [SkillsMP marketplace](https://skillsmp.com) for Claude Code skills r
 - **Keyword Search**: Fast exact matching for technology names
 - **AI Semantic Search**: Natural language queries powered by Cloudflare AI
 - **Project Analysis**: Automatically detect your tech stack and find relevant skills
+- **Install Skills**: Download and install skills directly from GitHub
+- **Manage Skills**: List and uninstall installed skills
 
 ## Installation
 
@@ -37,6 +39,7 @@ Simply ask Claude to find skills:
 - "Find skills for React"
 - "Search for testing skills"
 - "Analyze this project and find relevant skills"
+- "Find and install a skill for testing"
 
 ### Command Line
 
@@ -49,6 +52,10 @@ python3 ~/.claude/skills/skill-search/skill_search.py search "docker" --sort sta
 
 # AI semantic search (natural language)
 python3 ~/.claude/skills/skill-search/skill_search.py ai "improve code quality"
+
+# Interactive mode - search and install in one step
+python3 ~/.claude/skills/skill-search/skill_search.py search "react" -i
+python3 ~/.claude/skills/skill-search/skill_search.py ai "testing" --interactive
 
 # Analyze project and find skills
 python3 ~/.claude/skills/skill-search/skill_search.py analyze --dir /path/to/project
@@ -63,17 +70,52 @@ python3 ~/.claude/skills/skill-search/skill_search.py analyze --deep  # scan sou
 | `search "query"` | Keyword search (exact matching) |
 | `ai "query"` | AI semantic search (natural language) |
 | `analyze` | Analyze project and find relevant skills |
+| `install <url>` | Install skill from GitHub URL |
+| `list` | List installed skills |
+| `uninstall <name>` | Uninstall a skill |
 
 ### Search Options
 
 - `-n, --limit N` - Results per page (default: 10, max: 100)
 - `-p, --page N` - Page number
-- `--sort stars\|recent` - Sort order
+- `--sort stars|recent` - Sort order
+- `-i, --interactive` - Interactive mode: select and install skills from results
 
 ### Analyze Options
 
 - `--dir PATH` - Project directory (default: current)
 - `--deep` - Also scan source files
+
+### Install Options
+
+- `--name NAME` - Custom name for the skill folder
+- `--force` - Overwrite existing skill
+
+### Install Examples
+
+```bash
+# Install from a skill folder in a GitHub repo
+python3 ~/.claude/skills/skill-search/skill_search.py install https://github.com/anthropics/claude-code/tree/main/plugins/plugin-dev/skills/skill-development
+
+# Install with custom name
+python3 ~/.claude/skills/skill-search/skill_search.py install https://github.com/owner/repo/tree/main/skills/my-skill --name custom-name
+
+# Force reinstall
+python3 ~/.claude/skills/skill-search/skill_search.py install <url> --force
+```
+
+### List & Uninstall
+
+```bash
+# List all installed skills
+python3 ~/.claude/skills/skill-search/skill_search.py list
+
+# Uninstall a skill
+python3 ~/.claude/skills/skill-search/skill_search.py uninstall skill-name
+
+# Uninstall without confirmation
+python3 ~/.claude/skills/skill-search/skill_search.py uninstall skill-name -y
+```
 
 ## How It Works
 

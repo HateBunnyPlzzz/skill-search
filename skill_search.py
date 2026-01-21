@@ -7,6 +7,7 @@ Usage:
     python3 skill_search.py search "query"           # Keyword search
     python3 skill_search.py ai "natural language"    # AI semantic search
     python3 skill_search.py analyze [--dir PATH]     # Analyze project
+    python3 skill_search.py install <github-url>     # Install a skill
 
 API: https://skillsmp.com/docs/api
 """
@@ -15,16 +16,20 @@ import argparse
 import json
 import os
 import re
+import shutil
+import subprocess
 import sys
+import tempfile
 from pathlib import Path
 from urllib.request import Request, urlopen
 from urllib.error import HTTPError, URLError
-from urllib.parse import quote_plus
+from urllib.parse import quote_plus, urlparse
 
 # Configuration
 SCRIPT_DIR = Path(__file__).parent
 CONFIG_FILE = SCRIPT_DIR / "config.json"
 BASE_URL = "https://skillsmp.com"
+SKILLS_DIR = Path.home() / ".claude" / "skills"
 
 # Technology detection patterns
 TECH_PATTERNS = {
@@ -351,7 +356,62 @@ def ai_search_skills(query, api_key):
     return api_request(endpoint, api_key)
 
 
-def format_results(response, is_ai_search=False):
+def skillsmp_url_to_github(skillsmp_url):
+    """
+    Try to convert a SkillsMP URL to a GitHub URL.
+
+    SkillsMP URL format: skillsmp.com/skills/owner-repo-path-skill-md
+    This is a best-effort conversion as the format is ambiguous.
+    """
+    if not skillsmp_url or "skillsmp.com/skills/" not in skillsmp_url:
+        return None
+
+    # Extract the slug part
+    slug = skillsmp_url.split("skillsmp.com/skills/")[-1]
+
+    # Remove -skill-md suffix
+    if slug.endswith("-skill-md"):
+        slug = slug[:-9]
+
+    # Split by dashes
+    parts = slug.split("-")
+
+    if len(parts) < 2:
+        return None
+
+    # First part is owner
+    owner = parts[0]
+
+    # Try to find repo name - usually the second part or first two parts
+    # This is heuristic-based and won't always work
+    repo = parts[1]
+    path_start = 2
+
+    # Common patterns: owner-repo-name-path or owner-repo-path
+    # Try combining parts until we find a reasonable split
+    if len(parts) > 2 and parts[1] in ["claude", "claude-code", "skills", "awesome"]:
+        # Likely a multi-word repo name
+        for i in range(2, min(5, len(parts))):
+            test_repo = "-".join(parts[1:i+1])
+            if any(x in test_repo for x in ["claude", "skills", "code", "prompts", "config"]):
+                repo = test_repo
+                path_start = i + 1
+                break
+
+    # Remaining parts form the path
+    if path_start < len(parts):
+        path = "/".join(parts[path_start:])
+    else:
+        path = ""
+
+    # Construct GitHub URL
+    if path:
+        return f"https://github.com/{owner}/{repo}/tree/main/{path}"
+    else:
+        return f"https://github.com/{owner}/{repo}"
+
+
+def format_results(response, is_ai_search=False, interactive=False):
     """Format and print search results."""
     if not response or not response.get("success"):
         print("No results found or API error.")
@@ -397,6 +457,46 @@ def format_results(response, is_ai_search=False):
             print(f"   URL: {url}")
         print()
 
+    # Interactive installation prompt
+    if interactive and skills:
+        print("-" * 70)
+        print("Enter skill number to install (or 'q' to quit):")
+
+        while True:
+            try:
+                choice = input("> ").strip().lower()
+
+                if choice in ('q', 'quit', 'exit', ''):
+                    break
+
+                idx = int(choice) - 1
+                if 0 <= idx < len(skills):
+                    skill = skills[idx]
+                    skillsmp_url = skill.get("skillUrl", "")
+                    github_url = skillsmp_url_to_github(skillsmp_url)
+
+                    if github_url:
+                        print(f"\nAttempting to install from: {github_url}")
+                        success = install_skill_from_github(github_url)
+                        if success:
+                            print("\nEnter another number or 'q' to quit:")
+                        else:
+                            print("\nInstallation failed. The GitHub URL may be incorrect.")
+                            print(f"Try visiting: {skillsmp_url}")
+                            print("and find the actual GitHub source URL.\n")
+                    else:
+                        print(f"\nCouldn't determine GitHub URL for this skill.")
+                        print(f"Visit: {skillsmp_url}")
+                        print("to find the GitHub source URL, then use:")
+                        print(f"  skill_search.py install <github-url>\n")
+                else:
+                    print(f"Invalid choice. Enter 1-{len(skills)} or 'q'")
+            except ValueError:
+                print(f"Invalid input. Enter a number 1-{len(skills)} or 'q'")
+            except KeyboardInterrupt:
+                print("\nCancelled.")
+                break
+
     return skills
 
 
@@ -437,7 +537,7 @@ def cmd_search(args):
         page=args.page,
         sort_by=args.sort
     )
-    format_results(result, is_ai_search=False)
+    format_results(result, is_ai_search=False, interactive=args.interactive)
 
 
 def cmd_ai_search(args):
@@ -446,7 +546,7 @@ def cmd_ai_search(args):
     print(f"AI searching for: '{args.query}'...\n", file=sys.stderr)
 
     result = ai_search_skills(args.query, api_key)
-    format_results(result, is_ai_search=True)
+    format_results(result, is_ai_search=True, interactive=args.interactive)
 
 
 def cmd_analyze(args):
@@ -511,6 +611,286 @@ def cmd_analyze(args):
         format_results(result, is_ai_search=True)
 
 
+def parse_github_url(url):
+    """
+    Parse a GitHub URL to extract owner, repo, branch, and path.
+
+    Supports formats:
+    - https://github.com/owner/repo
+    - https://github.com/owner/repo/tree/branch/path/to/skill
+    - https://github.com/owner/repo/blob/branch/path/to/SKILL.md
+    """
+    parsed = urlparse(url)
+
+    if "github.com" not in parsed.netloc:
+        return None
+
+    parts = parsed.path.strip("/").split("/")
+
+    if len(parts) < 2:
+        return None
+
+    result = {
+        "owner": parts[0],
+        "repo": parts[1],
+        "branch": "main",  # default
+        "path": "",
+    }
+
+    # Handle /tree/branch/path or /blob/branch/path
+    if len(parts) > 3 and parts[2] in ("tree", "blob"):
+        result["branch"] = parts[3]
+        if len(parts) > 4:
+            result["path"] = "/".join(parts[4:])
+            # Remove SKILL.md from path if present
+            if result["path"].endswith("SKILL.md"):
+                result["path"] = "/".join(parts[4:-1])
+
+    return result
+
+
+def install_skill_from_github(url, skill_name=None, force=False):
+    """
+    Install a skill from a GitHub URL.
+
+    Uses git sparse-checkout to download only the skill folder.
+    """
+    github_info = parse_github_url(url)
+
+    if not github_info:
+        print(f"Error: Invalid GitHub URL: {url}", file=sys.stderr)
+        print("Expected format: https://github.com/owner/repo/tree/branch/path/to/skill", file=sys.stderr)
+        return False
+
+    owner = github_info["owner"]
+    repo = github_info["repo"]
+    branch = github_info["branch"]
+    path = github_info["path"]
+
+    # Determine skill name from path or repo
+    if skill_name:
+        final_name = skill_name
+    elif path:
+        # Use last folder in path as skill name
+        final_name = path.rstrip("/").split("/")[-1]
+        # Clean up the name
+        final_name = re.sub(r"[^a-zA-Z0-9_-]", "-", final_name).lower()
+    else:
+        final_name = repo.lower()
+
+    # Target directory
+    target_dir = SKILLS_DIR / final_name
+
+    if target_dir.exists():
+        if force:
+            print(f"Removing existing skill: {target_dir}")
+            shutil.rmtree(target_dir)
+        else:
+            print(f"Error: Skill already exists: {target_dir}", file=sys.stderr)
+            print("Use --force to overwrite", file=sys.stderr)
+            return False
+
+    # Ensure skills directory exists
+    SKILLS_DIR.mkdir(parents=True, exist_ok=True)
+
+    repo_url = f"https://github.com/{owner}/{repo}.git"
+
+    print(f"Installing skill '{final_name}' from {owner}/{repo}...")
+    print(f"  Branch: {branch}")
+    if path:
+        print(f"  Path: {path}")
+    print()
+
+    # Use sparse checkout to get only the skill folder
+    with tempfile.TemporaryDirectory() as tmpdir:
+        try:
+            # Initialize repo with sparse checkout
+            subprocess.run(
+                ["git", "clone", "--filter=blob:none", "--no-checkout", "--depth=1",
+                 "--branch", branch, repo_url, tmpdir],
+                check=True,
+                capture_output=True,
+                text=True
+            )
+
+            # Configure sparse checkout
+            subprocess.run(
+                ["git", "-C", tmpdir, "sparse-checkout", "init", "--cone"],
+                check=True,
+                capture_output=True,
+                text=True
+            )
+
+            if path:
+                subprocess.run(
+                    ["git", "-C", tmpdir, "sparse-checkout", "set", path],
+                    check=True,
+                    capture_output=True,
+                    text=True
+                )
+
+            # Checkout
+            subprocess.run(
+                ["git", "-C", tmpdir, "checkout"],
+                check=True,
+                capture_output=True,
+                text=True
+            )
+
+            # Copy the skill folder to target
+            if path:
+                source = Path(tmpdir) / path
+            else:
+                source = Path(tmpdir)
+
+            if not source.exists():
+                print(f"Error: Path not found in repository: {path}", file=sys.stderr)
+                return False
+
+            # Check if SKILL.md exists
+            skill_md = source / "SKILL.md"
+            if not skill_md.exists():
+                # Try to find SKILL.md in subdirectories
+                found = list(source.glob("**/SKILL.md"))
+                if found:
+                    source = found[0].parent
+                    print(f"  Found SKILL.md in: {source.relative_to(Path(tmpdir))}")
+                else:
+                    print(f"Warning: No SKILL.md found. Installing anyway.", file=sys.stderr)
+
+            # Copy to target
+            if source.is_dir():
+                shutil.copytree(source, target_dir, dirs_exist_ok=True)
+            else:
+                target_dir.mkdir(parents=True, exist_ok=True)
+                shutil.copy2(source, target_dir / source.name)
+
+            # Remove .git if copied
+            git_dir = target_dir / ".git"
+            if git_dir.exists():
+                shutil.rmtree(git_dir)
+
+            print(f"\nSuccess! Skill installed to: {target_dir}")
+
+            # Show skill info if available
+            skill_md = target_dir / "SKILL.md"
+            if skill_md.exists():
+                content = skill_md.read_text(encoding="utf-8")
+                # Extract name and description from frontmatter
+                match = re.search(r"^---\s*\n(.*?)\n---", content, re.DOTALL)
+                if match:
+                    frontmatter = match.group(1)
+                    name_match = re.search(r"^name:\s*(.+)$", frontmatter, re.MULTILINE)
+                    desc_match = re.search(r"^description:\s*[|>]?\s*\n?((?:[ \t]+.+\n?)+|.+)$", frontmatter, re.MULTILINE)
+
+                    if name_match:
+                        print(f"  Name: {name_match.group(1).strip()}")
+                    if desc_match:
+                        desc = desc_match.group(1).strip()[:200]
+                        print(f"  Description: {desc}...")
+
+            return True
+
+        except subprocess.CalledProcessError as e:
+            print(f"Error: Git operation failed: {e.stderr}", file=sys.stderr)
+            return False
+        except Exception as e:
+            print(f"Error: {e}", file=sys.stderr)
+            return False
+
+
+def cmd_install(args):
+    """Install a skill from GitHub."""
+    url = args.url
+
+    # If it's a SkillsMP URL, inform the user
+    if "skillsmp.com" in url:
+        print("Note: SkillsMP URLs point to skill pages, not directly installable.", file=sys.stderr)
+        print("Please find the GitHub source URL on the skill page and use that.", file=sys.stderr)
+        print("\nAlternatively, provide a GitHub URL like:", file=sys.stderr)
+        print("  https://github.com/owner/repo/tree/main/path/to/skill", file=sys.stderr)
+        sys.exit(1)
+
+    success = install_skill_from_github(
+        url,
+        skill_name=args.name,
+        force=args.force
+    )
+
+    if not success:
+        sys.exit(1)
+
+
+def cmd_list(args):
+    """List installed skills."""
+    if not SKILLS_DIR.exists():
+        print("No skills installed yet.")
+        print(f"Skills directory: {SKILLS_DIR}")
+        return
+
+    skills = []
+    for item in SKILLS_DIR.iterdir():
+        if item.is_dir():
+            skill_md = item / "SKILL.md"
+            if skill_md.exists():
+                try:
+                    content = skill_md.read_text(encoding="utf-8")
+                    match = re.search(r"^---\s*\n(.*?)\n---", content, re.DOTALL)
+                    name = item.name
+                    desc = ""
+                    if match:
+                        frontmatter = match.group(1)
+                        name_match = re.search(r"^name:\s*(.+)$", frontmatter, re.MULTILINE)
+                        if name_match:
+                            name = name_match.group(1).strip()
+                        desc_match = re.search(r"^description:\s*[|>]?\s*\n?((?:[ \t]+.+\n?)+|.+)$", frontmatter, re.MULTILINE)
+                        if desc_match:
+                            desc = desc_match.group(1).strip().split("\n")[0][:80]
+                    skills.append((item.name, name, desc))
+                except:
+                    skills.append((item.name, item.name, ""))
+            else:
+                skills.append((item.name, item.name, "(no SKILL.md)"))
+
+    if not skills:
+        print("No skills installed yet.")
+        return
+
+    print(f"\n{'='*70}")
+    print(f"Installed Skills ({len(skills)})")
+    print(f"{'='*70}\n")
+
+    for folder, name, desc in sorted(skills):
+        print(f"  {folder}/")
+        if name != folder:
+            print(f"    Name: {name}")
+        if desc:
+            print(f"    {desc}")
+        print()
+
+    print(f"Skills directory: {SKILLS_DIR}")
+
+
+def cmd_uninstall(args):
+    """Uninstall a skill."""
+    skill_name = args.skill_name
+    target_dir = SKILLS_DIR / skill_name
+
+    if not target_dir.exists():
+        print(f"Error: Skill not found: {skill_name}", file=sys.stderr)
+        print(f"Use 'list' command to see installed skills.", file=sys.stderr)
+        sys.exit(1)
+
+    if not args.yes:
+        confirm = input(f"Remove skill '{skill_name}'? [y/N]: ").strip().lower()
+        if confirm != "y":
+            print("Cancelled.")
+            return
+
+    shutil.rmtree(target_dir)
+    print(f"Uninstalled: {skill_name}")
+
+
 def main():
     parser = argparse.ArgumentParser(
         description="Search SkillsMP for Claude Code skills",
@@ -522,6 +902,9 @@ Examples:
   %(prog)s search "git" --sort stars      # Sort by popularity
   %(prog)s ai "improve code quality"      # AI semantic search
   %(prog)s analyze --dir /path/to/project # Analyze project
+  %(prog)s install <github-url>           # Install skill from GitHub
+  %(prog)s list                           # List installed skills
+  %(prog)s uninstall <skill-name>         # Uninstall a skill
         """
     )
 
@@ -536,15 +919,31 @@ Examples:
     p_search.add_argument("-n", "--limit", type=int, default=10, help="Results (max 100)")
     p_search.add_argument("-p", "--page", type=int, default=1, help="Page number")
     p_search.add_argument("--sort", choices=["stars", "recent"], help="Sort order")
+    p_search.add_argument("-i", "--interactive", action="store_true", help="Interactive mode: select skills to install")
 
     # AI search command
     p_ai = sub.add_parser("ai", help="AI semantic search")
     p_ai.add_argument("query", help="Natural language query")
+    p_ai.add_argument("-i", "--interactive", action="store_true", help="Interactive mode: select skills to install")
 
     # Analyze command
     p_analyze = sub.add_parser("analyze", help="Analyze project for relevant skills")
     p_analyze.add_argument("--dir", default=".", help="Project directory")
     p_analyze.add_argument("--deep", action="store_true", help="Deep scan source files")
+
+    # Install command
+    p_install = sub.add_parser("install", help="Install skill from GitHub URL")
+    p_install.add_argument("url", help="GitHub URL to skill folder")
+    p_install.add_argument("--name", help="Custom name for the skill folder")
+    p_install.add_argument("--force", action="store_true", help="Overwrite existing skill")
+
+    # List command
+    sub.add_parser("list", help="List installed skills")
+
+    # Uninstall command
+    p_uninstall = sub.add_parser("uninstall", help="Uninstall a skill")
+    p_uninstall.add_argument("skill_name", help="Name of skill to uninstall")
+    p_uninstall.add_argument("-y", "--yes", action="store_true", help="Skip confirmation")
 
     args = parser.parse_args()
 
@@ -560,6 +959,12 @@ Examples:
         cmd_ai_search(args)
     elif args.command == "analyze":
         cmd_analyze(args)
+    elif args.command == "install":
+        cmd_install(args)
+    elif args.command == "list":
+        cmd_list(args)
+    elif args.command == "uninstall":
+        cmd_uninstall(args)
 
 
 if __name__ == "__main__":

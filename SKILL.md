@@ -71,6 +71,17 @@ Show the user:
 - Description (what it does)
 - URL (to view full skill)
 
+### Step 5: Install (Optional)
+
+If the user wants to install a skill:
+```bash
+# Install from GitHub URL
+python3 ~/.claude/skills/skill-search/skill_search.py install <github-url>
+
+# Or use interactive mode during search
+python3 ~/.claude/skills/skill-search/skill_search.py search "react" -i
+```
+
 ## Commands
 
 ### Setup (First Time)
@@ -104,6 +115,25 @@ python3 ~/.claude/skills/skill-search/skill_search.py analyze [--dir PATH] [--de
 Options:
 - `--dir PATH` - Project directory (default: current)
 - `--deep` - Also scan source files (slower but more thorough)
+
+### Install Skill
+```bash
+python3 ~/.claude/skills/skill-search/skill_search.py install <github-url> [--name NAME] [--force]
+```
+
+Options:
+- `--name NAME` - Custom name for skill folder
+- `--force` - Overwrite existing skill
+
+### List Installed Skills
+```bash
+python3 ~/.claude/skills/skill-search/skill_search.py list
+```
+
+### Uninstall Skill
+```bash
+python3 ~/.claude/skills/skill-search/skill_search.py uninstall <skill-name> [-y]
+```
 
 ## Example Workflows
 
